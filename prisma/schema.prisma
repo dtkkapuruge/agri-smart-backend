@@ -1,0 +1,117 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [postgis]
+}
+
+model User {
+  user_id       String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String           @unique
+  password_hash String
+  phone         String?
+  role          String?          // farmer, buyer, admin
+  created_at    DateTime?        @default(now()) @db.Timestamptz(6)
+  
+  farmer_profile FarmerProfile?
+  buyer_profile  BuyerProfile?
+  orders         Order[]          @relation("BuyerOrders")
+  matching_logs  MatchingLog[]
+  delivery_fulfillment DeliveryFulfillment[]
+}
+
+model FarmerProfile {
+  profile_id     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String?  @unique @db.Uuid
+  farm_name      String?
+  farm_location  Unsupported("geometry(Point, 4326)")? // Location data සඳහා
+  current_rating Float?   @default(5.0)
+  is_verified    Boolean? @default(false)
+  
+  user           User?    @relation(fields: [user_id], references: [user_id])
+}
+
+model BuyerProfile {
+  profile_id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String?  @unique @db.Uuid
+  delivery_address String?
+  location         Unsupported("geometry(Point, 4326)")?
+  
+  user             User?    @relation(fields: [user_id], references: [user_id])
+}
+
+model Product {
+  product_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  category   String?
+  
+  market_prices MarketPrice[]
+  orders        Order[]
+}
+
+model MarketPrice {
+  price_id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id       String?  @db.Uuid
+  harti_base_price Decimal? @db.Decimal
+  updated_at       DateTime? @default(now()) @db.Timestamptz(6)
+  
+  product          Product? @relation(fields: [product_id], references: [product_id])
+  verification_reports AiVerificationReport[]
+}
+
+model Order {
+  order_id   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  buyer_id   String?  @db.Uuid
+  product_id String?  @db.Uuid
+  quantity   Int?
+  status     String?  @default("pending")
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  
+  buyer      User?    @relation("BuyerOrders", fields: [buyer_id], references: [user_id])
+  product    Product? @relation(fields: [product_id], references: [product_id])
+  matching_logs MatchingLog[]
+  verification_reports AiVerificationReport[]
+  delivery_fulfillment DeliveryFulfillment[]
+}
+
+model AiVerificationReport {
+  report_id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id               String?  @db.Uuid
+  price_id               String?  @db.Uuid
+  image_url              String?
+  ai_grade               String?
+  quality_score          Float?
+  metadata_verified      Boolean?
+  forensics_timestamp    DateTime? @db.Timestamp(6)
+  forensics_location     Unsupported("geometry(Point, 4326)")?
+  final_calculated_price Decimal?  @db.Decimal
+  
+  order  Order?       @relation(fields: [order_id], references: [order_id])
+  price  MarketPrice? @relation(fields: [price_id], references: [price_id])
+}
+
+model MatchingLog {
+  match_id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id           String? @db.Uuid
+  notified_farmer_id String? @db.Uuid
+  tier_level         Int?
+  response_status    String?
+  
+  order  Order? @relation(fields: [order_id], references: [order_id])
+  farmer User?  @relation(fields: [notified_farmer_id], references: [user_id])
+}
+
+model DeliveryFulfillment {
+  delivery_id  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id     String?   @db.Uuid
+  farmer_id    String?   @db.Uuid
+  otp_code     String?
+  qr_code_data String?
+  delivered_at DateTime? @db.Timestamp(6)
+  
+  order  Order? @relation(fields: [order_id], references: [order_id])
+  farmer User?  @relation(fields: [farmer_id], references: [user_id])
+}
